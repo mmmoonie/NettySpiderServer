@@ -1,5 +1,6 @@
 package xyz.supermoonie;
 
+import com.alibaba.fastjson.util.IOUtils;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -11,10 +12,14 @@ import io.netty.handler.codec.DelimiterBasedFrameDecoder;
 import io.netty.handler.codec.string.StringDecoder;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Queue;
+import java.util.Random;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Hello world!
@@ -24,6 +29,15 @@ import java.net.Socket;
 public class App 
 {
     public static final String BOUNDARY = "boundary-----------";
+
+    private static final int MAX_SOCKETS = 60;
+
+    private static final Queue<Integer> PORT_LIST = new LinkedBlockingQueue<>(MAX_SOCKETS);
+
+    static {
+        Random random = new Random();
+        random.ints(MAX_SOCKETS, 27000, 28000).forEach(PORT_LIST::add);
+    }
 
     public static void main( String[] args ) throws Exception {
         int port = 7100;
@@ -78,34 +92,52 @@ public class App
         private PrintWriter out = null;
         private Process process;
 
+        private boolean setServerSocket() {
+            int max = 10;
+            for (int i = 0; i < max; i ++) {
+                try {
+                    int port = PORT_LIST.poll();
+                    System.out.println("---------------> " + port);
+                    server = new ServerSocket(port, 1, null);
+                    return true;
+                } catch (IOException e) {
+                    System.err.println(e.getMessage());
+                }
+            }
+            return false;
+        }
+
         @Override
         public void channelActive(ChannelHandlerContext ctx) throws Exception {
-            server = new ServerSocket(7200, 1, null);
-            process = Runtime.getRuntime().exec("C:\\app\\WebViewSpider\\WebViewSpider.exe");
-            socket = server.accept();
-            in = new BufferedReader(new InputStreamReader(this.socket.getInputStream()));
-            out = new PrintWriter(this.socket.getOutputStream(), true);
+            if (setServerSocket()) {
+                process = Runtime.getRuntime().exec("C:\\app\\WebViewSpider\\WebViewSpider.exe " + server.getLocalPort());
+                socket = server.accept();
+                in = new BufferedReader(new InputStreamReader(this.socket.getInputStream()));
+                out = new PrintWriter(this.socket.getOutputStream(), true);
+            } else {
+                // TODO
+            }
             super.channelActive(ctx);
         }
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             String body = (String) msg;
-            System.out.println("--------------> " + body);
             out.write(body);
             out.flush();
-            String info;
-            while ((info = in.readLine()) != null) {
-                System.out.println(info);
-                ByteBuf resp = Unpooled.copiedBuffer(info.getBytes());
-                ctx.writeAndFlush(resp);
-            }
+            String info = in.readLine();
+            info += "\r\n";
+            info += BOUNDARY;
+            info += "\r\n";
+            ByteBuf resp = Unpooled.copiedBuffer(info.getBytes());
+            ctx.writeAndFlush(resp);
         }
 
         @Override
-        public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
-            System.out.println("channel read complete");
-//            ctx.close();
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            PORT_LIST.offer(server.getLocalPort());
+            close();
+            ctx.close();
         }
 
         @Override
@@ -113,7 +145,19 @@ public class App
             if (cause != null) {
                 cause.printStackTrace();
             }
+            PORT_LIST.offer(server.getLocalPort());
+            close();
             ctx.close();
+        }
+
+        private void close() {
+            IOUtils.close(in);
+            IOUtils.close(out);
+            IOUtils.close(socket);
+            if (process.isAlive()) {
+                process.destroy();
+            }
+            IOUtils.close(server);
         }
     }
 }

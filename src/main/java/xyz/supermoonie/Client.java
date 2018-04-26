@@ -53,7 +53,7 @@ public class Client {
                         @Override
                         protected void initChannel(SocketChannel socketChannel) throws Exception {
                             ByteBuf delimiter = Unpooled.copiedBuffer(App.BOUNDARY.getBytes());
-                            socketChannel.pipeline().addLast(new DelimiterBasedFrameDecoder(1024, delimiter));
+                            socketChannel.pipeline().addLast(new DelimiterBasedFrameDecoder(10240, delimiter));
                             socketChannel.pipeline().addLast(new StringDecoder());
                             socketChannel.pipeline().addLast(new Client.TimeClientHandler());
                         }
@@ -84,6 +84,9 @@ public class Client {
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             String body = (String) msg;
             System.out.println("this is: " + body);
+            ctx.disconnect();
+            ctx.close();
+            ctx.channel().close().sync();
         }
 
         @Override
