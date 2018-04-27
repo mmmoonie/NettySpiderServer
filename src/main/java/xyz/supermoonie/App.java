@@ -11,10 +11,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.DelimiterBasedFrameDecoder;
 import io.netty.handler.codec.string.StringDecoder;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Queue;
@@ -112,8 +109,8 @@ public class App
             if (setServerSocket()) {
                 process = Runtime.getRuntime().exec("C:\\app\\WebViewSpider\\WebViewSpider.exe " + server.getLocalPort());
                 socket = server.accept();
-                in = new BufferedReader(new InputStreamReader(this.socket.getInputStream()));
-                out = new PrintWriter(this.socket.getOutputStream(), true);
+                in = new BufferedReader(new InputStreamReader(this.socket.getInputStream(), "UTF-8"));
+                out = new PrintWriter(new OutputStreamWriter(this.socket.getOutputStream(), "UTF-8"), true);
             } else {
                 // TODO
             }
@@ -129,7 +126,7 @@ public class App
             info += "\r\n";
             info += BOUNDARY;
             info += "\r\n";
-            ByteBuf resp = Unpooled.copiedBuffer(info.getBytes());
+            ByteBuf resp = Unpooled.copiedBuffer(info.getBytes("UTF-8"));
             ctx.writeAndFlush(resp);
         }
 
