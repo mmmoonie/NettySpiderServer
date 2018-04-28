@@ -52,7 +52,7 @@ public class Client {
 
                         @Override
                         protected void initChannel(SocketChannel socketChannel) throws Exception {
-                            ByteBuf delimiter = Unpooled.copiedBuffer(App.BOUNDARY.getBytes());
+                            ByteBuf delimiter = Unpooled.copiedBuffer(ChildChannelHandler.BOUNDARY.getBytes());
                             socketChannel.pipeline().addLast(new DelimiterBasedFrameDecoder(10240, delimiter));
                             socketChannel.pipeline().addLast(new StringDecoder());
                             socketChannel.pipeline().addLast(new Client.TimeClientHandler());
@@ -76,7 +76,7 @@ public class Client {
             json.put("op", "load");
             json.put("interceptor", "");
             json.put("url", "https://persons.shgjj.com");
-            String req = json.toJSONString() + App.BOUNDARY;
+            String req = json.toJSONString() + ChildChannelHandler.BOUNDARY;
             ctx.writeAndFlush(Unpooled.copiedBuffer(req.getBytes()));
         }
 

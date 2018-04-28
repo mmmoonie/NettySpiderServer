@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Class-Path: fastjson-1.2.47.jar netty-all-5.0.0.Alpha1.jar
+Main-Class: xyz.supermoonie.App
+
