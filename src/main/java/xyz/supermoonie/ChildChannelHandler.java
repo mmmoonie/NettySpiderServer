@@ -54,7 +54,7 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
                 server.setReceiveBufferSize(10240);
                 break;
             } catch (IOException e) {
-                if (i >= max) {
+                if (i >= max -1) {
                     exceptionCaught(ctx, e);
                     return;
                 }
@@ -92,6 +92,7 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
         PORT_LIST.offer(server.getLocalPort());
         close();
         ctx.close();
+        super.channelInactive(ctx);
     }
 
     @Override
