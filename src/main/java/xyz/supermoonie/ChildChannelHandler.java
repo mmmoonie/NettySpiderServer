@@ -50,8 +50,9 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
             int port = PORT_LIST.poll();
             try {
                 server = new ServerSocket(port, 2);
-                server.setSoTimeout(10000);
+                server.setSoTimeout(30000);
                 server.setReceiveBufferSize(10240);
+                break;
             } catch (IOException e) {
                 if (i >= max) {
                     exceptionCaught(ctx, e);
@@ -62,7 +63,7 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
         }
         process = Runtime.getRuntime().exec(exePath + " " + server.getLocalPort());
         socket = server.accept();
-        socket.setSoTimeout(10000);
+        socket.setSoTimeout(30000);
         socket.setKeepAlive(false);
         socket.setTcpNoDelay(true);
         in = new BufferedReader(new InputStreamReader(this.socket.getInputStream(), "UTF-8"));
