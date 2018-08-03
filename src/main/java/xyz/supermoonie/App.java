@@ -14,6 +14,7 @@ import io.netty.handler.codec.DelimiterBasedFrameDecoder;
 import io.netty.handler.codec.string.StringDecoder;
 
 import java.io.File;
+import java.nio.charset.Charset;
 
 /**
  * Hello world!
@@ -77,7 +78,7 @@ public class App
                         protected void initChannel(SocketChannel socketChannel) throws Exception {
                             ByteBuf delimiter = Unpooled.copiedBuffer(ChildChannelHandler.BOUNDARY.getBytes("UTF-8"));
                             socketChannel.pipeline().addLast(new DelimiterBasedFrameDecoder(10240, delimiter));
-                            socketChannel.pipeline().addLast(new StringDecoder());
+                            socketChannel.pipeline().addLast(new StringDecoder(Charset.forName("UTF-8")));
                             socketChannel.pipeline().addLast(new ChildChannelHandler(exePath));
                         }
                     });
