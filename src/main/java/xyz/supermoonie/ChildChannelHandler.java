@@ -39,7 +39,8 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
         System.out.println(dateFormat.format(new Date()) + " channel active!");
-        int port = COUNTER.getAndIncrement();
+        int port = COUNTER.incrementAndGet();
+        System.out.println("WebViewSpider is listening on " + port);
         try {
             server = new ServerSocket(port, 2);
             server.setSoTimeout(30000);
@@ -99,7 +100,6 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
         data.append(errorJson.toJSONString());
         ByteBuf resp = Unpooled.copiedBuffer(data.toString().getBytes("UTF-8"));
         ctx.writeAndFlush(resp);
-        COUNTER.decrementAndGet();
         close();
         ctx.close();
     }
