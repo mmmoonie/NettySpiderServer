@@ -10,27 +10,19 @@ import io.netty.channel.ChannelHandlerContext;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Queue;
-import java.util.Random;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- *
  * @author wangchao
  * @date 2018/4/28
  */
 public class ChildChannelHandler extends ChannelHandlerAdapter {
 
-    public static final String BOUNDARY = "boundary-----------";
+    static final String BOUNDARY = "boundary-----------";
 
-    private static final int MAX_SOCKETS = 60;
-
-    private static final Queue<Integer> PORT_LIST = new LinkedBlockingQueue<>(MAX_SOCKETS);
-
-    static {
-        Random random = new Random();
-        random.ints(MAX_SOCKETS, 27000, 28000).forEach(PORT_LIST::add);
-    }
+    private static final AtomicInteger COUNTER = new AtomicInteger(27000);
 
     private ServerSocket server = null;
     private Socket socket = null;
@@ -39,27 +31,23 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
     private Process process;
     private String exePath;
 
-    public ChildChannelHandler(String exePath) {
+    ChildChannelHandler(String exePath) {
         this.exePath = exePath;
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        int max = 10;
-        for (int i = 0; i < max; i ++) {
-            int port = PORT_LIST.poll();
-            try {
-                server = new ServerSocket(port, 2);
-                server.setSoTimeout(30000);
-                server.setReceiveBufferSize(10240);
-                break;
-            } catch (IOException e) {
-                if (i >= max -1) {
-                    exceptionCaught(ctx, e);
-                    return;
-                }
-                PORT_LIST.offer(port);
-            }
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
+        System.out.println(dateFormat.format(new Date()) + " channel active!");
+        int port = COUNTER.getAndIncrement();
+        try {
+            server = new ServerSocket(port, 2);
+            server.setSoTimeout(30000);
+            server.setReceiveBufferSize(10240);
+        } catch (IOException e) {
+            COUNTER.decrementAndGet();
+            exceptionCaught(ctx, e);
+            return;
         }
         process = Runtime.getRuntime().exec(exePath + " " + server.getLocalPort());
         socket = server.accept();
@@ -74,6 +62,8 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         String body = (String) msg;
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
+        System.out.println(dateFormat.format(new Date()) + " receive: " + body);
         out.write(body);
         out.flush();
         StringBuilder data = new StringBuilder();
@@ -89,7 +79,7 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        PORT_LIST.offer(server.getLocalPort());
+        COUNTER.decrementAndGet();
         close();
         ctx.close();
         super.channelInactive(ctx);
@@ -109,7 +99,7 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
         data.append(errorJson.toJSONString());
         ByteBuf resp = Unpooled.copiedBuffer(data.toString().getBytes("UTF-8"));
         ctx.writeAndFlush(resp);
-        PORT_LIST.offer(server.getLocalPort());
+        COUNTER.decrementAndGet();
         close();
         ctx.close();
     }
