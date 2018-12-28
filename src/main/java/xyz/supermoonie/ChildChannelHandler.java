@@ -1,18 +1,17 @@
 package xyz.supermoonie;
 
 import com.alibaba.fastjson.JSONObject;
-import com.alibaba.fastjson.util.IOUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerAdapter;
 import io.netty.channel.ChannelHandlerContext;
 
-import java.io.*;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * @author wangchao
@@ -22,14 +21,13 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
 
     static final String BOUNDARY = "boundary-----------";
 
+    private static final Pattern ID_DEAD_LINE_PATTERN = Pattern.compile("^id:([0-9a-zA-Z]{32})deadline:(\\d+)$");
+
     private static final AtomicInteger COUNTER = new AtomicInteger(27000);
 
-    private ServerSocket server = null;
-    private Socket socket = null;
-    private BufferedReader in = null;
-    private PrintWriter out = null;
-    private Process process;
     private String exePath;
+
+    private WebViewDriver webViewDriver;
 
     ChildChannelHandler(String exePath) {
         this.exePath = exePath;
@@ -42,46 +40,46 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
         int port = COUNTER.incrementAndGet();
         System.out.println("WebViewSpider is listening on " + port);
         try {
-            server = new ServerSocket(port, 2);
-            server.setSoTimeout(30000);
-            server.setReceiveBufferSize(10240);
+            webViewDriver = new WebViewDriver(exePath, port);
         } catch (IOException e) {
             COUNTER.decrementAndGet();
             exceptionCaught(ctx, e);
             return;
         }
-        process = Runtime.getRuntime().exec(exePath + " " + server.getLocalPort());
-        socket = server.accept();
-        socket.setSoTimeout(30000);
-        socket.setKeepAlive(false);
-        socket.setTcpNoDelay(true);
-        in = new BufferedReader(new InputStreamReader(this.socket.getInputStream(), "UTF-8"));
-        out = new PrintWriter(new OutputStreamWriter(this.socket.getOutputStream(), "UTF-8"), true);
         super.channelActive(ctx);
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        webViewDriver.startWebView();
         String body = (String) msg;
+        Matcher matcher = ID_DEAD_LINE_PATTERN.matcher(body);
+        if (matcher.find()) {
+            String id = matcher.group(1);
+            long deadLine = Long.parseLong(matcher.group(2));
+            if (deadLine <= 0) {
+                throw new IllegalArgumentException("deadline less than zero!");
+            }
+            webViewDriver.setDeadLine(deadLine);
+            WebViewDriverPool.DRIVER_POOL.putIfAbsent(id, webViewDriver);
+        }
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
         System.out.println(dateFormat.format(new Date()) + " receive: " + body);
-        out.write(body);
-        out.flush();
-        StringBuilder data = new StringBuilder();
         try {
-            data.append(in.readLine()).append("\r\n").append(BOUNDARY).append("\r\n");
+            String data = webViewDriver.send(body);
+            ByteBuf resp = Unpooled.copiedBuffer(data.getBytes("UTF-8"));
+            ctx.writeAndFlush(resp);
         } catch (IOException e) {
             exceptionCaught(ctx, e);
-            return;
         }
-        ByteBuf resp = Unpooled.copiedBuffer(data.toString().getBytes("UTF-8"));
-        ctx.writeAndFlush(resp);
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         COUNTER.decrementAndGet();
-        close();
+        if (webViewDriver.getDeadLine() == -1) {
+            webViewDriver.close();
+        }
         ctx.close();
         super.channelInactive(ctx);
     }
@@ -100,17 +98,7 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
         data.append(errorJson.toJSONString());
         ByteBuf resp = Unpooled.copiedBuffer(data.toString().getBytes("UTF-8"));
         ctx.writeAndFlush(resp);
-        close();
+        webViewDriver.close();
         ctx.close();
-    }
-
-    private void close() {
-        IOUtils.close(in);
-        IOUtils.close(out);
-        IOUtils.close(socket);
-        if (process.isAlive()) {
-            process.destroy();
-        }
-        IOUtils.close(server);
     }
 }
