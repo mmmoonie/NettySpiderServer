@@ -22,9 +22,11 @@ public class WebViewDriverPool {
     private static void run() {
         while (true) {
             try {
-                for (WebViewDriver webViewDriver : DRIVER_POOL.values()) {
+                for (String id : DRIVER_POOL.keySet()) {
+                    WebViewDriver webViewDriver = DRIVER_POOL.get(id);
                     if (System.currentTimeMillis() > webViewDriver.getDeadLine()) {
                         webViewDriver.close();
+                        DRIVER_POOL.remove(id);
                     }
                     Thread.sleep(10);
                 }

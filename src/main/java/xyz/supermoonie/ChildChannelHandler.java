@@ -64,7 +64,7 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
             if (deadLine <= 0) {
                 throw new IllegalArgumentException("deadline less than zero!");
             }
-            webViewDriver.setDeadLine(deadLine);
+            webViewDriver.setDeadLine(System.currentTimeMillis() + deadLine);
             WebViewDriverPool.DRIVER_POOL.putIfAbsent(id, webViewDriver);
             JSONObject data = new JSONObject();
             data.put("code", 200);
@@ -112,7 +112,7 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        if (webViewDriver.getDeadLine() <= 0) {
+        if (null != webViewDriver && webViewDriver.getDeadLine() <= 0) {
             webViewDriver.close();
         }
         ctx.close();

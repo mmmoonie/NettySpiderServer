@@ -65,7 +65,7 @@ public class WebViewDriver implements Closeable {
     }
 
     public void setDeadLine(long deadLine) {
-        this.deadLine = System.currentTimeMillis() + deadLine;
+        this.deadLine = deadLine;
     }
 
     public int getPort() {
