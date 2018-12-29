@@ -84,6 +84,7 @@ public class App
                     });
             ChannelFuture f = b.bind(port).sync();
             System.out.println("the server is start in port: " + port);
+            WebViewDriverPool.start();
             f.channel().closeFuture().sync();
         } finally {
             bossGroup.shutdownGracefully();

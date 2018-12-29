@@ -9,7 +9,7 @@ import io.netty.channel.ChannelHandlerContext;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Stack;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,7 +23,15 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
 
     private static final Pattern ID_DEAD_LINE_PATTERN = Pattern.compile("^id:([0-9a-zA-Z]{32})deadline:(\\d+)$");
 
-    private static final AtomicInteger COUNTER = new AtomicInteger(27000);
+    private static final Pattern ID_PATTERN = Pattern.compile("^id:([0-9a-zA-Z]{32})$");
+
+    public static final Stack<Integer> PORTS = new Stack<>();
+
+    static {
+        for (int i = 0; i < 200; i++) {
+            PORTS.push(27000 + i);
+        }
+    }
 
     private String exePath;
 
@@ -37,24 +45,20 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
         System.out.println(dateFormat.format(new Date()) + " channel active!");
-        int port = COUNTER.incrementAndGet();
-        System.out.println("WebViewSpider is listening on " + port);
-        try {
-            webViewDriver = new WebViewDriver(exePath, port);
-        } catch (IOException e) {
-            COUNTER.decrementAndGet();
-            exceptionCaught(ctx, e);
-            return;
-        }
         super.channelActive(ctx);
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        webViewDriver.startWebView();
         String body = (String) msg;
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
+        System.out.println(dateFormat.format(new Date()) + " receive: " + body);
         Matcher matcher = ID_DEAD_LINE_PATTERN.matcher(body);
+        Matcher idMatcher = ID_PATTERN.matcher(body);
         if (matcher.find()) {
+            if (null == webViewDriver) {
+                throw new IllegalArgumentException("StayCommand could not be first command!");
+            }
             String id = matcher.group(1);
             long deadLine = Long.parseLong(matcher.group(2));
             if (deadLine <= 0) {
@@ -62,22 +66,53 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
             }
             webViewDriver.setDeadLine(deadLine);
             WebViewDriverPool.DRIVER_POOL.putIfAbsent(id, webViewDriver);
-        }
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
-        System.out.println(dateFormat.format(new Date()) + " receive: " + body);
-        try {
+            JSONObject data = new JSONObject();
+            data.put("code", 200);
+            data.put("data", "success");
+            data.put("desc", "");
+            ByteBuf resp = Unpooled.copiedBuffer((data.toJSONString() + "\r\n" + BOUNDARY + "\r\n").getBytes("UTF-8"));
+            ctx.writeAndFlush(resp);
+        } else if (idMatcher.find()) {
+            String id = idMatcher.group(1);
+            JSONObject data = new JSONObject();
+            data.put("code", 200);
+            data.put("desc", "");
+            WebViewDriver driver = WebViewDriverPool.DRIVER_POOL.remove(id);
+            if (null != driver) {
+                driver.setDeadLine(-1);
+                this.webViewDriver = driver;
+                data.put("data", true);
+            } else {
+                data.put("data", false);
+            }
+            ByteBuf resp = Unpooled.copiedBuffer((data.toJSONString() + "\r\n" + BOUNDARY + "\r\n").getBytes("UTF-8"));
+            ctx.writeAndFlush(resp);
+        } else {
+            if (null == webViewDriver) {
+                Integer port = PORTS.pop();
+                if (null == port) {
+                    throw new IllegalStateException("PORT_QUEUE empty!");
+                }
+                System.out.println("WebViewSpider is listening on " + port);
+                webViewDriver = new WebViewDriver(exePath, port);
+                try {
+                    webViewDriver.startWebView();
+                } catch (IOException e) {
+                    PORTS.push(webViewDriver.getPort());
+                    exceptionCaught(ctx, e);
+                    return;
+                }
+            }
             String data = webViewDriver.send(body);
             ByteBuf resp = Unpooled.copiedBuffer(data.getBytes("UTF-8"));
             ctx.writeAndFlush(resp);
-        } catch (IOException e) {
-            exceptionCaught(ctx, e);
         }
+
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        COUNTER.decrementAndGet();
-        if (webViewDriver.getDeadLine() == -1) {
+        if (webViewDriver.getDeadLine() <= 0) {
             webViewDriver.close();
         }
         ctx.close();
@@ -95,7 +130,7 @@ public class ChildChannelHandler extends ChannelHandlerAdapter {
         } else {
             errorJson.put("desc", "unknown exception");
         }
-        data.append(errorJson.toJSONString());
+        data.append(errorJson.toJSONString()).append("\r\n").append(BOUNDARY).append("\r\n");
         ByteBuf resp = Unpooled.copiedBuffer(data.toString().getBytes("UTF-8"));
         ctx.writeAndFlush(resp);
         webViewDriver.close();
